@@ -81,10 +81,18 @@ class Ghost:
 class Game:
     def __init__(self, mode="singleplayer", host=None):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # Fix for black screen: Set display mode with explicit flags
+        try:
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.DOUBLEBUF | pygame.HWSURFACE)
+        except:
+            # Fallback to software rendering if hardware acceleration fails
+            print("⚠️ Hardware acceleration failed, using software rendering...")
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         pygame.display.set_caption("👻 Horror Game - P2P Multiplayer")
+        pygame.display.flip()  # Force initial display update
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
+        print("✅ Display initialized successfully")
         
         self.mode = mode
         self.host = host
@@ -229,7 +237,7 @@ class Game:
             ghost.update()
             
             # Check collision with player
-            dist = ((self.player.x + 20 - ghost.x)**2 + **(self.player.y + 30 - ghost.y)2)**0.5
+            dist = ((self.player.x + 20 - ghost.x)**2 + (self.player.y + 30 - ghost.y)**2)**0.5
             if dist < ghost.radius + 20:
                 # Jump scare effect
                 self.screen.fill(RED)
