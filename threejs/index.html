@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>👻 Horror Game - Triple-A 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+    canvas { display: block; }
+    
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-size: 14px;
+      text-shadow: 0 0 5px #000;
+      pointer-events: none;
+      z-index: 100;
+    }
+    
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 100;
+    }
+    
+    #loc-name {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      color: #fff;
+      font-size: 18px;
+      text-shadow: 0 0 10px #f00;
+      z-index: 100;
+    }
+    
+    #health-bar, #sanity-bar {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 200px;
+      height: 20px;
+      background: rgba(0,0,0,0.7);
+      border: 2px solid #333;
+      z-index: 100;
+    }
+    
+    #health-bar { bottom: 50px; }
+    
+    #health-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #f00, #ff6600);
+      transition: width 0.3s;
+    }
+    
+    #sanity-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #0066ff, #00ccff);
+      transition: width 0.3s;
+    }
+    
+    #health-label, #sanity-label {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #fff;
+      font-size: 12px;
+      text-shadow: 0 0 3px #000;
+    }
+    
+    #jumpscare {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23000"/><circle cx="35" cy="40" r="8" fill="%23fff"/><circle cx="65" cy="40" r="8" fill="%23fff"/><ellipse cx="50" cy="70" rx="15" ry="20" fill="%23000"/></svg>');
+      background-size: cover;
+      display: none;
+      z-index: 1000;
+      animation: flash 0.1s infinite;
+    }
+    
+    @keyframes flash {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    #scene-selector {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.9);
+      padding: 30px;
+      border-radius: 10px;
+      text-align: center;
+      color: #fff;
+      z-index: 200;
+      display: block;
+    }
+    
+    #scene-selector h2 {
+      margin-bottom: 20px;
+      color: #f00;
+    }
+    
+    #scene-selector button {
+      display: block;
+      width: 200px;
+      margin: 10px auto;
+      padding: 15px;
+      background: #333;
+      color: #fff;
+      border: 2px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      font-family: inherit;
+    }
+    
+    #scene-selector button:hover {
+      background: #555;
+      border-color: #f00;
+    }
+    
+    .bar-label {
+      position: absolute;
+      right: 220px;
+      color: #fff;
+      font-size: 12px;
+      text-shadow: 0 0 3px #000;
+    }
+    
+    #health-label { bottom: 50px; }
+    #sanity-label { bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div id="scene-selector">
+    <h2>👻 HORROR GAME 3D</h2>
+    <p style="margin-bottom: 15px; color: #aaa;">Wähle deine Umgebung:</p>
+    <button onclick="startGame('house')">🏚️ Verlassenes Haus</button>
+    <button onclick="startGame('graveyard')">⚰️ Alter Friedhof</button>
+    <button onclick="startGame('forest')">🌲 Dunkler Wald</button>
+  </div>
+  
+  <div id="ui" style="display: none;">
+    <div id="mode">Mode: Singleplayer</div>
+    <div id="fps">FPS: 60</div>
+    <div style="margin-top: 10px; color: #aaa;">WASD: Move | Mouse: Look | E: Interact | Shift: Sprint</div>
+  </div>
+  
+  <div id="crosshair" style="display: none;"></div>
+  <div id="loc-name" style="display: none;">Haus Eingang</div>
+  
+  <div id="health-label" class="bar-label" style="display: none;">❤️ HEALTH</div>
+  <div id="health-bar" style="display: none;"><div id="health-fill"></div></div>
+  
+  <div id="sanity-label" class="bar-label" style="display: none;">🧠 SANITY</div>
+  <div id="sanity-bar" style="display: none;"><div id="sanity-fill"></div></div>
+  
+  <div id="jumpscare"></div>
+  
+  <!-- Three.js von CDN -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  
+  <!-- Game Script -->
+  <script type="module" src="/game.js"></script>
+</body>
+</html>

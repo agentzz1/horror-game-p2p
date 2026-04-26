@@ -1,8 +1,12 @@
 __pycache__/
 *.py[cod]
-*$py.class
+node_modules/
 dist/
 build/
+*.pyc
+__pycache__/
+.env
+.DS_Store
 *.spec
 .env
 venv/

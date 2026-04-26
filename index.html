@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👻 Horror Game - P2P Multiplayer</title>
+    <link rel="stylesheet" href="assets/index-CzHQuPxP.css">
+</head>
+<body>
+    <div id="root"></div>
+    
+    <!-- React UI Bundle -->
+    <script type="module" src="assets/index-O2ehcG2L.js"></script>
+    
+    <!-- Game Dependencies -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <script src="game-client.js"></script>
+    
+    <!-- Bridge between React UI and Game -->
+    <script>
+        // Global game state accessible from React UI
+        window.gameState = {
+            isPlaying: false,
+            settings: JSON.parse(localStorage.getItem('horrorGameSettings') || '{}'),
+            onStartGame: () => {
+                console.log('Starting game...');
+                // Hide UI, show canvas
+                document.getElementById('root').style.display = 'none';
+                // Launch game logic here
+            },
+            onQuitGame: () => {
+                console.log('Quitting game...');
+                document.getElementById('root').style.display = 'block';
+            }
+        };
+        
+        // Listen for settings changes from React UI
+        window.addEventListener('gameSettingsChanged', (e) => {
+            window.gameState.settings = e.detail;
+            localStorage.setItem('horrorGameSettings', JSON.stringify(e.detail));
+            console.log('Settings updated:', e.detail);
+        });
+    </script>
+</body>
+</html>
