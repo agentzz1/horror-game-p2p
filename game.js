@@ -261,29 +261,112 @@ function setupLighting() {
     scene.add(spotlight);
 }
 
+// ===== PBR TEXTURE GENERATOR (Procedural 4K Quality) =====
+function createPBRTexture(type) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    
+    // Base fill
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 1024, 1024);
+    
+    if (type === 'wood') {
+        // Wood planks procedural
+        for (let y = 0; y < 1024; y += 128) {
+            const shade = 0.3 + Math.random() * 0.2;
+            ctx.fillStyle = `rgb(${shade*60}, ${shade*40}, ${shade*30})`;
+            ctx.fillRect(0, y, 1024, 120);
+            // Wood grain
+            for (let i = 0; i < 200; i++) {
+                ctx.strokeStyle = `rgba(0,0,0,${0.1 + Math.random()*0.2})`;
+                ctx.lineWidth = 1 + Math.random() * 2;
+                ctx.beginPath();
+                ctx.moveTo(0, y + Math.random() * 120);
+                for (let x = 0; x < 1024; x += 50) {
+                    ctx.lineTo(x, y + Math.random() * 120);
+                }
+                ctx.stroke();
+            }
+        }
+    } else if (type === 'brick') {
+        // Brick wall
+        ctx.fillStyle = '#4a2a2a';
+        ctx.fillRect(0, 0, 1024, 1024);
+        for (let y = 0; y < 1024; y += 64) {
+            const offset = (y / 64) % 2 === 0 ? 0 : 50;
+            for (let x = -offset; x < 1024; x += 100) {
+                ctx.fillStyle = `rgb(${60 + Math.random()*40}, ${20 + Math.random()*20}, ${20 + Math.random()*20})`;
+                ctx.fillRect(x + offset + 2, y + 2, 96, 60);
+            }
+        }
+    } else if (type === 'concrete') {
+        // Concrete with imperfections
+        for (let i = 0; i < 5000; i++) {
+            const gray = 0.4 + Math.random() * 0.3;
+            ctx.fillStyle = `rgba(${gray*255}, ${gray*255}, ${gray*255}, 0.5)`;
+            ctx.beginPath();
+            ctx.arc(Math.random() * 1024, Math.random() * 1024, Math.random() * 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    } else if (type === 'grass') {
+        // Grass ground
+        ctx.fillStyle = '#1a3d1a';
+        ctx.fillRect(0, 0, 1024, 1024);
+        for (let i = 0; i < 10000; i++) {
+            const green = 0.1 + Math.random() * 0.3;
+            ctx.fillStyle = `rgba(${green*50}, ${green*100}, ${green*30}, 0.8)`;
+            ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 2, 4);
+        }
+    } else if (type === 'dirt') {
+        // Dirt with leaves
+        ctx.fillStyle = '#2a1a0a';
+        ctx.fillRect(0, 0, 1024, 1024);
+        for (let i = 0; i < 3000; i++) {
+            ctx.fillStyle = `rgba(${0.3 + Math.random()*0.2}*255, ${0.2 + Math.random()*0.1}*255, ${0.1 + Math.random()*0.1}*255, 0.6)`;
+            ctx.beginPath();
+            ctx.arc(Math.random() * 1024, Math.random() * 1024, 3 + Math.random() * 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    
+    return new THREE.CanvasTexture(canvas);
+}
+
 // ===== UMGEBUNG =====
 function createEnvironment() {
     const config = scenes[currentScene];
     
-    // Boden
-    const groundGeo = new THREE.PlaneGeometry(100, 100, 128, 128);
+    // Boden mit hochauflösender Geometrie
+    const groundGeo = new THREE.PlaneGeometry(100, 100, 256, 256);
     
-    // Heightmap für Terrain
+    // Heightmap für Terrain (verbessert)
     const vertices = groundGeo.attributes.position.array;
     for (let i = 0; i < vertices.length; i += 3) {
         const x = vertices[i];
         const y = vertices[i + 1];
-        // Procedural terrain noise
-        vertices[i + 2] = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.5 
-                        + Math.sin(x * 0.3 + y * 0.2) * 0.2;
+        // Multi-octave noise für natürliches Terrain
+        let height = 0;
+        height += Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.5;
+        height += Math.sin(x * 0.3 + y * 0.2) * 0.2;
+        height += Math.sin(x * 0.8) * Math.cos(y * 0.6) * 0.1;
+        vertices[i + 2] = height;
     }
     groundGeo.computeVertexNormals();
     
-    const groundMat = new THREE.StandardMaterial({ 
-        color: config.groundTexture === 'wood' ? 0x3d2817 :
-               config.groundTexture === 'grass' ? 0x1a3d1a : 0x2a1a0a,
+    // PBR Material mit proceduraler Textur
+    const textureType = config.groundTexture === 'wood' ? 'wood' :
+                        config.groundTexture === 'grass' ? 'grass' : 'dirt';
+    const groundTexture = createPBRTexture(textureType);
+    groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+    groundTexture.repeat.set(10, 10);
+    
+    const groundMat = new THREE.MeshStandardMaterial({ 
+        map: groundTexture,
         roughness: 0.9,
-        metalness: 0.1
+        metalness: 0.0,
+        normalScale: new THREE.Vector2(0.5, 0.5)
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
@@ -478,6 +561,44 @@ function createWeatherEffects() {
     const dust = new THREE.Points(dustGeo, dustMat);
     dust.userData = { isDust: true };
     scene.add(dust);
+    
+    // Funken-Partikel bei Lichtquellen (Triple-A Effekt)
+    const sparkCount = 500;
+    const sparkGeo = new THREE.BufferGeometry();
+    const sparkPositions = new Float32Array(sparkCount * 3);
+    const sparkVelocities = new Float32Array(sparkCount * 3);
+    const sparkLife = new Float32Array(sparkCount);
+    
+    // Funken um Lichtquellen positionieren
+    const lightPositions = [[3, 2.5, 3], [-3, 2.5, -3], [0, 3, -5]];
+    for (let i = 0; i < sparkCount * 3; i += 3) {
+        const lightIdx = Math.floor(i / 3) % lightPositions.length;
+        const [lx, ly, lz] = lightPositions[lightIdx];
+        sparkPositions[i] = lx + (Math.random() - 0.5) * 2;
+        sparkPositions[i + 1] = ly + (Math.random() - 0.5) * 2;
+        sparkPositions[i + 2] = lz + (Math.random() - 0.5) * 2;
+        sparkVelocities[i] = (Math.random() - 0.5) * 0.1;
+        sparkVelocities[i + 1] = Math.random() * 0.15;
+        sparkVelocities[i + 2] = (Math.random() - 0.5) * 0.1;
+        sparkLife[Math.floor(i / 3)] = Math.random();
+    }
+    
+    sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
+    sparkGeo.setAttribute('velocity', new THREE.BufferAttribute(sparkVelocities, 3));
+    sparkGeo.setAttribute('life', new THREE.BufferAttribute(sparkLife, 1));
+    
+    const sparkMat = new THREE.PointsMaterial({
+        color: 0xffaa00,
+        size: 0.08,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    
+    const sparks = new THREE.Points(sparkGeo, sparkMat);
+    sparks.userData = { isSparks: true };
+    scene.add(sparks);
     
     // Nebel (bereits durch scene.fog gesetzt, aber hier verstärken)
     if (weather.fog) {

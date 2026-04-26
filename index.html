@@ -149,33 +149,24 @@
   </style>
 </head>
 <body>
+  <!-- React UI Root Container -->
+  <div id="react-root"></div>
+  
   <!-- Three.js Canvas -->
   <canvas id="canvas"></canvas>
   
-  <div id="scene-selector">
-    <h2>👻 HORROR GAME 3D</h2>
-    <p style="margin-bottom: 15px; color: #aaa;">Wähle deine Umgebung:</p>
-    <button onclick="startGame('house')">🏚️ Verlassenes Haus</button>
-    <button onclick="startGame('graveyard')">⚰️ Alter Friedhof</button>
-    <button onclick="startGame('forest')">🌲 Dunkler Wald</button>
-  </div>
-  
-  <div id="ui" style="display: none;">
-    <div id="mode">Mode: Singleplayer</div>
-    <div id="fps">FPS: 60</div>
-    <div style="margin-top: 10px; color: #aaa;">WASD: Move | Mouse: Look | E: Interact | Shift: Sprint</div>
-  </div>
-  
+  <!-- Simple HUD (wird von React UI gesteuert) -->
   <div id="crosshair" style="display: none;"></div>
-  <div id="loc-name" style="display: none;">Haus Eingang</div>
-  
+  <div id="loc-name" style="display: none;"></div>
   <div id="health-label" class="bar-label" style="display: none;">❤️ HEALTH</div>
   <div id="health-bar" style="display: none;"><div id="health-fill"></div></div>
-  
   <div id="sanity-label" class="bar-label" style="display: none;">🧠 SANITY</div>
   <div id="sanity-bar" style="display: none;"><div id="sanity-fill"></div></div>
-  
   <div id="jumpscare"></div>
+  
+  <!-- React UI (built with Vite) -->
+  <script type="module" crossorigin src="ui/dist/assets/index-BI258vA4.js"></script>
+  <link rel="stylesheet" crossorigin href="ui/dist/assets/index-CNJO_tpK.css">
   
   <!-- Three.js von CDN -->
   <script type="importmap">
@@ -186,6 +177,9 @@
     }
   }
   </script>
+  
+  <!-- Game Engine Bridge (verbindet React UI mit Three.js) -->
+  <script src="game-engine-bridge.js"></script>
   
   <!-- Game Script -->
   <script type="module" src="game.js"></script>
