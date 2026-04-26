@@ -1,58 +1,100 @@
-# 👻 Horror Game - P2P Multiplayer
+# 👻 Horror Game - P2P Multiplayer (Phase 5)
 
-Ein einfaches Horror-Spiel mit P2P-Multiplayer-Funktionalität.
+Ein Triple-A Horror-Spiel mit WebRTC P2P-Multiplayer-Funktionalität.
 
 ## Features
 - 🎮 Singleplayer Modus
-- 🌐 P2P Multiplayer (Host/Client)
-- 👻 Gruselige Geister
+- 🌐 **WebRTC P2P Multiplayer** (Low-Latency Data Channels)
+- 👑 **Host-Migration** bei Disconnect (kein Game-Break)
+- 🎯 **State Interpolation/Extrapolation** für smooth movement
+- 🛡️ **Anti-Cheat Basics** (Speed Detection, Bounds Check)
+- 👻 Gruselige Geister mit KI
 - 😱 Jump Scares
 - 💻 Cross-platform (Windows, Mac, Linux)
+- 🌧️ Wetter-Effekte (Regen, Nebel, Staubpartikel)
+- ✨ Post-Processing (SSAO, Bloom, Color Grading)
 
 ## Installation
 
 ### Voraussetzungen
-- Python 3.8+
-- pygame
-- pyinstaller (für .exe Build)
+- Node.js 16+ (für Signaling Server)
+- Moderner Browser mit WebRTC Support (Chrome, Firefox, Edge)
 
 ### Schnellstart
+
+**1. Signaling Server starten:**
 ```bash
-pip install -r requirements.txt
-python horror_game.py
+npm install express socket.io
+node server.js
 ```
 
-## Spielmodi
+Der Server läuft auf `http://localhost:3000`
 
-1. **Singleplayer**: Solo gegen die Geister
-2. **Host**: Erstelle einen P2P-Server für Freunde
-3. **Join**: Verbinde dich mit einem Host
-
-## Als .exe compilieren (Windows)
-
+**2. Spiel im Browser öffnen:**
 ```bash
-# Installiere Dependencies
-pip install pygame pyinstaller
+# Option A: Direkt öffnen
+open index.html
 
-# Build
-pyinstaller --onefile --windowed --name="HorrorGame" horror_game.py
+# Option B: Local Server (empfohlen)
+npx serve .
+# Dann: http://localhost:3000 oder http://DEINE-IP:3000
 ```
 
-Die `HorrorGame.exe` befindet sich im `dist/` Ordner.
+## Multiplayer Nutzung
 
-## Für deine Jungs spielen
+### Host sein:
+1. Spiel im Browser öffnen
+2. Auf "Create Room" klicken
+3. Room ID notieren (z.B. `a3f8b2c1`)
+4. Freunden die Room ID + deine IP geben
 
-1. Host erstellt das Spiel (Modus 2)
-2. Host teilt seine lokale IP (z.B. 192.168.0.XXX)
-3. Freunde wählen Modus 3 und geben die IP ein
-4. Together gegen die Geister kämpfen! 👻
+### Joinen:
+1. Spiel im Browser öffnen
+2. Auf "Join Room" klicken
+3. Room ID eingeben
+4. Verbinden!
 
-## GitHub Release
+### Netzwerk-Architektur:
+- **Signaling**: Socket.IO über Port 3000
+- **P2P Daten**: WebRTC Data Channels (direkt zwischen Clients)
+- **State Updates**: 50ms Interval (20x pro Sekunde)
+- **Interpolation**: 100ms Delay für smooth rendering
+- **Host Migration**: Automatisch bei Host-Disconnect
 
-1. Repository erstellen
-2. Code hochladen
-3. Releases Tab → New Release
-4. `dist/HorrorGame.exe` als Asset hochladen
+## Anti-Cheat Features
+
+- **Speed Hack Detection**: Max 15 Einheiten/Sekunde
+- **Bounds Check**: Spieler bleibt im definierten Bereich
+- **Rate Limiting**: Max 30 Messages/Sekunde pro Client
+- **Server-Side Validation**: Ungültige States werden verworfen
+
+## Tech Stack
+
+- **Rendering**: Three.js mit Post-Processing
+- **P2P**: Simple-Peer (WebRTC Wrapper)
+- **Signaling**: Socket.IO
+- **Physics**: Custom (einfache Kollisionen)
+- **UI**: Vanilla JS + Canvas für Labels
+
+## Performance
+
+- **Target**: 60 FPS bei 2-4 Players
+- **Network**: <100ms Latenz (P2P direkt)
+- **Interpolation**: Smooth auch bei 200ms Packet Loss
+
+## Troubleshooting
+
+**"Peer connection failed"**: 
+- Firewall prüfen (WebRTC Ports)
+- STUN Server erreichbar? (stun.l.google.com:19302)
+
+**"Room not found"**: 
+- Host muss zuerst Room erstellen
+- Room ID korrekt kopiert?
+
+**"Laggy movement"**: 
+- INTERPOLATION_DELAY_MS in network.js anpassen (default: 100ms)
+- Bei schlechtem Netz: auf 150-200ms erhöhen
 
 ---
 

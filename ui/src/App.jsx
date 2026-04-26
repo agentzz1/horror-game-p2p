@@ -3,15 +3,31 @@ import MainMenu from './components/MainMenu'
 import SettingsPanel from './components/SettingsPanel'
 import LoadingScreen from './components/LoadingScreen'
 import Tutorial from './components/Tutorial'
+import PauseMenu from './components/PauseMenu'
+import GameBridge from './components/GameBridge'
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState('menu')
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const [settings, setSettings] = useState({
     graphics: { quality: 80, shadows: true, particles: true },
     audio: { master: 70, music: 60, sfx: 80 },
     controls: { sensitivity: 50, invertY: false }
   })
   const [isLoading, setIsLoading] = useState(false)
+
+  // Listen for pause events from game
+  useEffect(() => {
+    const handlePauseToggle = () => {
+      if (isPlaying) {
+        setIsPaused(prev => !prev)
+      }
+    }
+
+    window.addEventListener('togglePause', handlePauseToggle)
+    return () => window.removeEventListener('togglePause', handlePauseToggle)
+  }, [isPlaying])
 
   // Load settings from localStorage
   useEffect(() => {
@@ -31,14 +47,28 @@ function App() {
     setIsLoading(true)
     setTimeout(() => {
       setIsLoading(false)
+      setIsPlaying(true)
       setCurrentScreen('tutorial')
     }, 3000)
   }
 
   const completeTutorial = () => {
     setCurrentScreen('game')
-    // Here you would launch the actual Pygame window
+    // Signal game engine to start
+    window.dispatchEvent(new CustomEvent('startGame', { detail: settings }))
     console.log('Launching game...')
+  }
+
+  const resumeGame = () => {
+    setIsPaused(false)
+    window.dispatchEvent(new CustomEvent('resumeGame'))
+  }
+
+  const quitToMenu = () => {
+    setIsPlaying(false)
+    setIsPaused(false)
+    setCurrentScreen('menu')
+    window.dispatchEvent(new CustomEvent('quitGame'))
   }
 
   const goToMenu = () => {
@@ -47,16 +77,34 @@ function App() {
 
   return (
     <div className="app">
+      {/* Game Bridge - handles UI/Game synchronization */}
+      <GameBridge 
+        settings={settings}
+        isPlaying={isPlaying}
+      />
+
+      {/* Loading Screen */}
       {isLoading && <LoadingScreen />}
       
-      {currentScreen === 'menu' && (
-        <MainMenu 
-          onStart={startGame}
-          onSettings={() => setCurrentScreen('settings')}
-          onQuit={() => console.log('Quit game')}
+      {/* Pause Menu - shown when game is paused */}
+      {isPaused && (
+        <PauseMenu
+          onResume={resumeGame}
+          onSettings={() => {}}
+          onQuitToMenu={quitToMenu}
         />
       )}
 
+      {/* Main Menu */}
+      {currentScreen === 'menu' && !isPlaying && (
+        <MainMenu 
+          onStart={startGame}
+          onSettings={() => setCurrentScreen('settings')}
+          onQuit={quitToMenu}
+        />
+      )}
+
+      {/* Settings Panel */}
       {currentScreen === 'settings' && (
         <SettingsPanel 
           settings={settings}
@@ -65,14 +113,15 @@ function App() {
         />
       )}
 
+      {/* Tutorial */}
       {currentScreen === 'tutorial' && (
         <Tutorial onComplete={completeTutorial} onSkip={completeTutorial} />
       )}
 
-      {currentScreen === 'game' && (
-        <div style={{ display: 'none' }}>
-          {/* Game canvas would be rendered here */}
-          <p>Game running...</p>
+      {/* Game Canvas Container */}
+      {currentScreen === 'game' && isPlaying && (
+        <div id="game-container" style={{ width: '100vw', height: '100vh' }}>
+          {/* Three.js canvas will be rendered here by game engine */}
         </div>
       )}
     </div>

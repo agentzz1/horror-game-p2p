@@ -3,13 +3,27 @@
  * Uses Socket.IO for WebRTC connection setup
  */
 
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const crypto = require('crypto');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
+
+// Serve static files
+app.use(express.static(__dirname));
+
+// Serve index.html for root
+app.get('/', (req, res) => {
+    res.sendFile(join(__dirname, 'index.html'));
+});
+
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });

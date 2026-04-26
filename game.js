@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SSAOEffect } from 'three/addons/effects/SSAOEffect.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -14,7 +15,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 // ===== GLOBALE VARIABLEN =====
 let scene, camera, renderer, composer, controls;
 let currentScene = 'house';
-let player = { speed: 5, sprintSpeed: 10, health: 100, sanity: 100 };
+let player = { speed: 5, sprintSpeed: 10, health: 100, sanity: 100, mesh: null, mixer: null };
 let ghosts = [];
 let interactables = [];
 let weather = { rain: true, fog: true, intensity: 0.8 };
@@ -25,6 +26,9 @@ let lastPlayerState = null;
 let stateUpdateTimer = 0;
 const STATE_UPDATE_INTERVAL = 50; // ms
 let remotePlayerMeshes = new Map(); // playerId -> mesh
+
+// Asset Loader
+const gltfLoader = new GLTFLoader();
 
 // ===== SZENEN KONFIGURATION =====
 const scenes = {
@@ -482,37 +486,127 @@ function createWeatherEffects() {
 }
 
 // ===== GEISTER =====
+function createGhostModel() {
+    const ghostGroup = new THREE.Group();
+    
+    // Körper - fließende Form (mehrere Sphären für organische Form)
+    const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.6,
+        emissive: 0xaaaaaa,
+        emissiveIntensity: 0.4,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    
+    // Hauptkörper (größere Sphäre)
+    const mainBody = new THREE.Mesh(new THREE.SphereGeometry(0.35, 24, 24), bodyMat);
+    mainBody.position.y = 1.2;
+    mainBody.castShadow = true;
+    ghostGroup.add(mainBody);
+    
+    // Unterteil (schweifartig)
+    for (let i = 0; i < 5; i++) {
+        const tailSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.15 + Math.random() * 0.1, 16, 16),
+            bodyMat.clone()
+        );
+        tailSphere.position.set(
+            (Math.random() - 0.5) * 0.3,
+            0.5 + Math.random() * 0.5,
+            (Math.random() - 0.5) * 0.2
+        );
+        tailSphere.scale.y = 1.5;
+        tailSphere.castShadow = true;
+        ghostGroup.add(tailSphere);
+    }
+    
+    // Augen (leuchtend)
+    const eyeMat = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 2
+    });
+    
+    const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeMat);
+    leftEye.position.set(-0.12, 1.3, 0.25);
+    ghostGroup.add(leftEye);
+    
+    const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeMat);
+    rightEye.position.set(0.12, 1.3, 0.25);
+    ghostGroup.add(rightEye);
+    
+    // Mund (offen, gruselig)
+    const mouthGeo = new THREE.TorusGeometry(0.08, 0.02, 8, 16, Math.PI);
+    const mouthMat = new THREE.MeshStandardMaterial({ 
+        color: 0x000000,
+        emissive: 0x110000,
+        emissiveIntensity: 0.5
+    });
+    const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+    mouth.position.set(0, 1.1, 0.28);
+    mouth.rotation.x = Math.PI;
+    ghostGroup.add(mouth);
+    
+    // Point Light für unheimliches Leuchten
+    const ghostLight = new THREE.PointLight(0xaaffff, 0.8, 4);
+    ghostLight.position.set(0, 1.2, 0);
+    ghostGroup.add(ghostLight);
+    
+    // Animation State
+    ghostGroup.userData = {
+        mainBody,
+        tailSpheres: ghostGroup.children.filter(c => c.geometry && c.geometry.type === 'SphereGeometry' && c !== mainBody && c !== leftEye && c !== rightEye && c !== mouth),
+        floatPhase: Math.random() * Math.PI * 2,
+        rotationSpeed: 0.3 + Math.random() * 0.4
+    };
+    
+    return ghostGroup;
+}
+
+function updateGhostAnimation(ghost, delta, time) {
+    const userData = ghost.userData;
+    
+    // Schwebende Bewegung (vertikal)
+    ghost.position.y += Math.sin(time * 2 + userData.floatPhase) * 0.008;
+    
+    // Zufällige Bewegung
+    ghost.position.add(userData.velocity.clone().multiplyScalar(delta * 2));
+    
+    // Rotation für unheimlichen Effekt
+    ghost.rotation.y += delta * userData.rotationSpeed;
+    
+    // Körper wackeln (organische Bewegung)
+    userData.mainBody.scale.setScalar(1 + Math.sin(time * 3 + userData.floatPhase) * 0.05);
+    
+    // Schweif-AnIMATION (jede Sphäre leicht versetzt)
+    userData.tailSpheres.forEach((sphere, i) => {
+        sphere.position.y += Math.sin(time * 4 + userData.floatPhase + i * 0.5) * 0.003;
+        sphere.scale.setScalar(1 + Math.sin(time * 5 + i) * 0.1);
+    });
+    
+    // Grenzen
+    if (ghost.position.distanceTo(new THREE.Vector3(0, 1, -10)) > 30) {
+        userData.velocity.negate();
+    }
+}
+
 function createGhosts() {
     const ghostCount = 5;
     
     for (let i = 0; i < ghostCount; i++) {
-        const ghostGeo = new THREE.SphereGeometry(0.4, 16, 16);
-        const ghostMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.7,
-            emissive: 0xaaaaaa,
-            emissiveIntensity: 0.3
-        });
-        
-        const ghost = new THREE.Mesh(ghostGeo, ghostMat);
+        const ghost = createGhostModel();
         ghost.position.set(
             (Math.random() - 0.5) * 20,
             1 + Math.random() * 2,
             (Math.random() - 0.5) * 20 - 10
         );
-        ghost.userData = {
-            velocity: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.02,
-                (Math.random() - 0.5) * 0.01,
-                (Math.random() - 0.5) * 0.02
-            ),
-            phase: Math.random() * Math.PI * 2
-        };
-        
-        // Point Light für unheimliches Leuchten
-        const ghostLight = new THREE.PointLight(0xaaffff, 0.5, 3);
-        ghost.add(ghostLight);
+        ghost.userData.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.02,
+            (Math.random() - 0.5) * 0.01,
+            (Math.random() - 0.5) * 0.02
+        );
         
         ghosts.push(ghost);
         scene.add(ghost);
@@ -526,8 +620,128 @@ let moveLeft = false;
 let moveRight = false;
 let isSprinting = false;
 
+function createPlayerModel() {
+    // Player Character als Group aus einfachen Geometrien
+    const playerGroup = new THREE.Group();
+    
+    // Körper (Torso)
+    const torsoGeo = new THREE.CylinderGeometry(0.2, 0.25, 0.5, 8);
+    const torsoMat = new THREE.MeshStandardMaterial({ 
+        color: 0x3366cc, 
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const torso = new THREE.Mesh(torsoGeo, torsoMat);
+    torso.position.y = 1.25;
+    torso.castShadow = true;
+    playerGroup.add(torso);
+    
+    // Kopf
+    const headGeo = new THREE.SphereGeometry(0.15, 16, 16);
+    const headMat = new THREE.MeshStandardMaterial({ 
+        color: 0xffdbac, 
+        roughness: 0.6 
+    });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 1.6;
+    head.castShadow = true;
+    playerGroup.add(head);
+    
+    // Arme
+    const armGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8);
+    const armMat = new THREE.MeshStandardMaterial({ color: 0x3366cc });
+    
+    const leftArm = new THREE.Mesh(armGeo, armMat);
+    leftArm.position.set(-0.3, 1.2, 0);
+    leftArm.rotation.z = 0.3;
+    leftArm.castShadow = true;
+    playerGroup.add(leftArm);
+    
+    const rightArm = new THREE.Mesh(armGeo, armMat);
+    rightArm.position.set(0.3, 1.2, 0);
+    rightArm.rotation.z = -0.3;
+    rightArm.castShadow = true;
+    playerGroup.add(rightArm);
+    
+    // Beine
+    const legGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.5, 8);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    
+    const leftLeg = new THREE.Mesh(legGeo, legMat);
+    leftLeg.position.set(-0.1, 0.5, 0);
+    leftLeg.castShadow = true;
+    playerGroup.add(leftLeg);
+    
+    const rightLeg = new THREE.Mesh(legGeo, legMat);
+    rightLeg.position.set(0.1, 0.5, 0);
+    rightLeg.castShadow = true;
+    playerGroup.add(rightLeg);
+    
+    // Taschenlampe (Flashlight)
+    const flashGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.15, 8);
+    const flashMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 });
+    const flashlight = new THREE.Mesh(flashGeo, flashMat);
+    flashlight.position.set(0.25, 1.1, 0.15);
+    flashlight.rotation.x = -Math.PI / 4;
+    playerGroup.add(flashlight);
+    
+    // Flashlight Light
+    const flashLight = new THREE.SpotLight(0xffffff, 2, 10, Math.PI / 6, 0.5);
+    flashLight.position.set(0.25, 1.1, 0.15);
+    flashLight.target.position.set(0.25, 0.5, 5);
+    playerGroup.add(flashLight);
+    playerGroup.add(flashLight.target);
+    
+    // Animation State
+    playerGroup.userData = {
+        leftArm, rightArm, leftLeg, rightLeg,
+        walkCycle: 0,
+        isWalking: false
+    };
+    
+    return playerGroup;
+}
+
 function setupPlayer() {
-    // Player wird durch PointerLockControls gesteuert
+    // 3D Player Model erstellen
+    player.mesh = createPlayerModel();
+    player.mesh.visible = false; // First-Person: Mesh nicht sichtbar
+    scene.add(player.mesh);
+    
+    // Player Position an Camera binden
+    player.mesh.position.copy(camera.position);
+}
+
+function updatePlayerAnimation(delta) {
+    if (!player.mesh) return;
+    
+    // Player Mesh an Camera Position binden (für First-Person)
+    player.mesh.position.copy(camera.position);
+    player.mesh.rotation.y = camera.rotation.y;
+    
+    // Walking Animation wenn bewegt
+    const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+    const userData = player.mesh.userData;
+    
+    if (isMoving) {
+        userData.walkCycle += delta * (isSprinting ? 10 : 6);
+        userData.isWalking = true;
+        
+        // Arm Swing
+        userData.leftArm.rotation.x = Math.sin(userData.walkCycle) * 0.5;
+        userData.rightArm.rotation.x = Math.sin(userData.walkCycle + Math.PI) * 0.5;
+        
+        // Leg Movement
+        userData.leftLeg.rotation.x = Math.sin(userData.walkCycle + Math.PI) * 0.6;
+        userData.rightLeg.rotation.x = Math.sin(userData.walkCycle) * 0.6;
+    } else {
+        userData.isWalking = false;
+        // Return to idle pose
+        userData.leftArm.rotation.x = THREE.MathUtils.lerp(userData.leftArm.rotation.x, 0, delta * 5);
+        userData.rightArm.rotation.x = THREE.MathUtils.lerp(userData.rightArm.rotation.x, 0, delta * 5);
+        userData.leftLeg.rotation.x = THREE.MathUtils.lerp(userData.leftLeg.rotation.x, 0, delta * 5);
+        userData.rightLeg.rotation.x = THREE.MathUtils.lerp(userData.rightLeg.rotation.x, 0, delta * 5);
+    }
 }
 
 function onKeyDown(event) {
@@ -567,6 +781,237 @@ function interact() {
     }
 }
 
+// ===== MULTIPLAYER UI =====
+function setupMultiplayerUI() {
+    const ui = document.createElement('div');
+    ui.id = 'multiplayer-ui';
+    ui.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 2px solid #4a4a4a;
+        border-radius: 8px;
+        padding: 15px;
+        color: #fff;
+        font-family: monospace;
+        font-size: 14px;
+        z-index: 1000;
+        min-width: 250px;
+    `;
+    
+    ui.innerHTML = `
+        <div style="font-weight: bold; margin-bottom: 10px; color: #ff6b6b;">🎮 MULTIPLAYER</div>
+        <div id="mp-status" style="margin-bottom: 8px;">Status: <span style="color: #ffa500;">Disconnected</span></div>
+        <div id="mp-room" style="margin-bottom: 8px;">Room: <span id="room-id">-</span></div>
+        <div id="mp-players" style="margin-bottom: 10px;">Players: <span id="player-count">0</span></div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="btn-create-room" style="
+                background: #2ecc71;
+                border: none;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-family: monospace;
+            ">Create Room</button>
+            <button id="btn-join-room" style="
+                background: #3498db;
+                border: none;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-family: monospace;
+            ">Join Room</button>
+        </div>
+        <div id="mp-debug" style="
+            margin-top: 10px;
+            font-size: 11px;
+            color: #888;
+            max-height: 100px;
+            overflow-y: auto;
+        "></div>
+    `;
+    
+    document.body.appendChild(ui);
+    
+    // Event Listeners
+    document.getElementById('btn-create-room').addEventListener('click', () => {
+        createRoom((response) => {
+            updateMultiplayerUI();
+            logDebug(`Room created: ${networkState.roomId}`);
+        });
+    });
+    
+    document.getElementById('btn-join-room').addEventListener('click', () => {
+        const roomId = prompt('Enter Room ID:');
+        if (roomId) {
+            joinRoom(roomId, (response) => {
+                updateMultiplayerUI();
+                if (response.success) {
+                    logDebug(`Joined room: ${roomId}`);
+                } else {
+                    logDebug(`Failed to join: ${response.error}`);
+                }
+            });
+        }
+    });
+    
+    // Socket Events für UI Updates
+    if (networkState.socket) {
+        networkState.socket.on('connect', () => {
+            document.getElementById('mp-status').innerHTML = 'Status: <span style="color: #2ecc71;">Connected</span>';
+            logDebug('Connected to signaling server');
+        });
+        
+        networkState.socket.on('disconnect', () => {
+            document.getElementById('mp-status').innerHTML = 'Status: <span style="color: #e74c3c;">Disconnected</span>';
+            logDebug('Disconnected from signaling server');
+        });
+        
+        networkState.socket.on('player-joined', (data) => {
+            updateMultiplayerUI();
+            logDebug(`Player joined: ${data.playerId}`);
+        });
+        
+        networkState.socket.on('player-left', (data) => {
+            updateMultiplayerUI();
+            logDebug(`Player left: ${data.playerId}`);
+        });
+        
+        networkState.socket.on('host-migrated', (data) => {
+            logDebug(`Host migrated to: ${data.newHostId}`);
+            if (networkState.isHost) {
+                logDebug('👑 You are now the host!');
+            }
+        });
+    }
+    
+    function updateMultiplayerUI() {
+        document.getElementById('room-id').textContent = networkState.roomId || '-';
+        document.getElementById('player-count').textContent = networkState.peers.size + 1;
+        
+        const hostBadge = networkState.isHost ? ' <span style="color: #f39c12;">(HOST)</span>' : '';
+        document.getElementById('mp-room').innerHTML = `Room: <span id="room-id">${networkState.roomId || '-'}</span>${hostBadge}`;
+    }
+    
+    function logDebug(msg) {
+        const debugEl = document.getElementById('mp-debug');
+        const line = document.createElement('div');
+        line.textContent = `> ${msg}`;
+        debugEl.appendChild(line);
+        debugEl.scrollTop = debugEl.scrollHeight;
+        
+        // Keep only last 10 lines
+        while (debugEl.children.length > 10) {
+            debugEl.removeChild(debugEl.firstChild);
+        }
+    }
+    
+    // Initial update
+    updateMultiplayerUI();
+}
+
+// ===== REMOTE PLAYERS RENDERING =====
+function updateRemotePlayers() {
+    const states = getAllRemotePlayerStates();
+    
+    // Remove meshes for players that are no longer connected
+    remotePlayerMeshes.forEach((mesh, playerId) => {
+        if (!states[playerId]) {
+            scene.remove(mesh);
+            remotePlayerMeshes.delete(playerId);
+        }
+    });
+    
+    // Update or create meshes for connected players
+    Object.keys(states).forEach(playerId => {
+        const state = states[playerId];
+        if (!state) return;
+        
+        let mesh = remotePlayerMeshes.get(playerId);
+        
+        if (!mesh) {
+            // Create new player mesh (simple capsule representation)
+            const geometry = new THREE.CapsuleGeometry(0.3, 1.5, 4, 8);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x3498db,
+                emissive: 0x1a5276,
+                emissiveIntensity: 0.3,
+                roughness: 0.7,
+                metalness: 0.3
+            });
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            
+            // Add head (sphere)
+            const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffdbac,
+                roughness: 0.5
+            });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 0.85;
+            mesh.add(head);
+            
+            // Add player label
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.font = 'bold 20px monospace';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Player ${playerId.slice(-4)}`, 128, 40);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.SpriteMaterial({ map: texture });
+            const label = new THREE.Sprite(labelMat);
+            label.position.y = 1.5;
+            label.scale.set(2, 0.5, 1);
+            mesh.add(label);
+            
+            mesh.userData.labelCanvas = canvas;
+            mesh.userData.labelTexture = texture;
+            
+            scene.add(mesh);
+            remotePlayerMeshes.set(playerId, mesh);
+        }
+        
+        // Smooth interpolation to target position
+        const targetPos = new THREE.Vector3(state.x, state.y, state.z);
+        const currentPos = mesh.position.clone();
+        const lerpFactor = 0.15; // Smooth interpolation
+        
+        mesh.position.lerpVectors(currentPos, targetPos, lerpFactor);
+        
+        // Rotate to face direction (if we have rotation data)
+        if (state.rotation) {
+            mesh.rotation.y = state.rotation.y || 0;
+            
+            // Update label with player ID
+            const ctx = mesh.userData.labelCanvas.getContext('2d');
+            ctx.clearRect(0, 0, 256, 64);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.font = 'bold 20px monospace';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Player ${playerId.slice(-4)}`, 128, 40);
+            mesh.userData.labelTexture.needsUpdate = true;
+        }
+        
+        // Health indicator (color change)
+        if (state.health !== undefined) {
+            const healthRatio = state.health / 100;
+            mesh.material.color.setHSL(0.6 * healthRatio, 0.8, 0.5);
+        }
+    });
+}
+
 // ===== SZENEN WECHSEL =====
 window.switchScene = function(sceneName) {
     currentScene = sceneName;
@@ -596,6 +1041,99 @@ function onWindowResize() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     composer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ===== REMOTE PLAYERS RENDER =====
+function updateRemotePlayers() {
+    const remoteStates = getAllRemotePlayerStates();
+    
+    // Für jeden Remote-Player
+    Object.keys(remoteStates).forEach(playerId => {
+        const state = remoteStates[playerId];
+        if (!state) return;
+        
+        // Existierendes Mesh finden oder erstellen
+        let mesh = remotePlayerMeshes.get(playerId);
+        
+        if (!mesh) {
+            // Neues Player-Mesh erstellen (Kapselform für Spieler)
+            const playerGroup = new THREE.Group();
+            
+            // Körper
+            const bodyGeo = new THREE.CapsuleGeometry(0.3, 1.2, 8, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x00ff00, 
+                emissive: 0x004400,
+                emissiveIntensity: 0.3
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.9;
+            body.castShadow = true;
+            playerGroup.add(body);
+            
+            // Kopf (für Blickrichtung)
+            const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffccaa,
+                roughness: 0.5
+            });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.7;
+            head.castShadow = true;
+            playerGroup.add(head);
+            
+            // Player Label (ID-Anzeige)
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Player ${playerId.slice(-4)}`, 128, 40);
+            
+            const labelTexture = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.SpriteMaterial({ map: labelTexture });
+            const label = new THREE.Sprite(labelMat);
+            label.position.y = 2.3;
+            label.scale.set(2, 0.5, 1);
+            playerGroup.add(label);
+            
+            // Point Light für Sichtbarkeit
+            const playerLight = new THREE.PointLight(0x00ff00, 0.5, 5);
+            playerLight.position.y = 1;
+            playerGroup.add(playerLight);
+            
+            mesh = playerGroup;
+            mesh.userData = { playerId, head };
+            remotePlayerMeshes.set(playerId, mesh);
+            scene.add(mesh);
+            
+            console.log('✅ Added remote player mesh:', playerId);
+        }
+        
+        // Position updaten (interpoliert)
+        mesh.position.set(state.x || 0, state.y || 0, state.z || 0);
+        
+        // Rotation updaten (Kopf zeigt in Blickrichtung)
+        if (state.rotation) {
+            mesh.rotation.y = state.rotation.y || 0;
+            if (mesh.userData.head) {
+                mesh.userData.head.rotation.x = state.rotation.x || 0;
+            }
+        }
+    });
+    
+    // Gelöschte Player entfernen (wenn nicht mehr in remoteStates)
+    remotePlayerMeshes.forEach((mesh, playerId) => {
+        if (!remoteStates[playerId]) {
+            scene.remove(mesh);
+            remotePlayerMeshes.delete(playerId);
+            console.log('🚪 Removed remote player mesh:', playerId);
+        }
+    });
 }
 
 // ===== ANIMATION LOOP =====
@@ -646,21 +1184,12 @@ function animate() {
     // Multiplayer: Remote Players rendern/update
     updateRemotePlayers();
     
-    // Geister Animation
+    // Player Animation (Walking, etc.)
+    updatePlayerAnimation(delta);
+    
+    // Geister Animation mit verbesserter Logik
     ghosts.forEach((ghost, i) => {
-        // Schwebende Bewegung
-        ghost.position.y += Math.sin(time * 2 + ghost.userData.phase) * 0.005;
-        
-        // Zufällige Bewegung
-        ghost.position.add(ghost.userData.velocity.clone().multiplyScalar(delta * 2));
-        
-        // Rotation für unheimlichen Effekt
-        ghost.rotation.y += delta * 0.5;
-        
-        // Grenzen
-        if (ghost.position.distanceTo(new THREE.Vector3(0, 1, -10)) > 30) {
-            ghost.userData.velocity.negate();
-        }
+        updateGhostAnimation(ghost, delta, time);
         
         // Jumpscare Check
         const distToPlayer = ghost.position.distanceTo(camera.position);
