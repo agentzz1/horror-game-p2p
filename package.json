@@ -1,7 +1,8 @@
 {
   "name": "horror-game-p2p",
   "version": "1.0.0",
-  "description": "P2P Multiplayer Horror Game with WebRTC",
+  "type": "module",
+  "description": "Procedural GT3 Nurburgring racing simulator",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

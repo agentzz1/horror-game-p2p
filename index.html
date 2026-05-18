@@ -3,172 +3,122 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>👻 Horror Game - Triple-A 3D</title>
+  <title>GT3 Nurburgring Simulator</title>
+  <link rel="icon" href="data:," />
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
-    canvas { display: block; }
-    
-    #ui {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: #fff;
-      font-size: 14px;
-      text-shadow: 0 0 5px #000;
-      pointer-events: none;
-      z-index: 100;
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-    
-    #crosshair {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 20px;
-      height: 20px;
-      border: 2px solid rgba(255,255,255,0.5);
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 100;
-    }
-    
-    #loc-name {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      color: #fff;
-      font-size: 18px;
-      text-shadow: 0 0 10px #f00;
-      z-index: 100;
-    }
-    
-    #health-bar, #sanity-bar {
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      width: 200px;
-      height: 20px;
-      background: rgba(0,0,0,0.7);
-      border: 2px solid #333;
-      z-index: 100;
-    }
-    
-    #health-bar { bottom: 50px; }
-    
-    #health-fill {
+
+    html,
+    body {
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, #f00, #ff6600);
-      transition: width 0.3s;
+      overflow: hidden;
+      background: #07100b;
+      color: #f5f7f2;
+      font-family: Arial, Helvetica, sans-serif;
     }
-    
-    #sanity-fill {
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, #0066ff, #00ccff);
-      transition: width 0.3s;
+
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      background: #07100b;
     }
-    
-    #health-label, #sanity-label {
-      position: absolute;
-      left: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #fff;
+
+    #race-hud {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 2;
+      min-width: 238px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(5, 12, 9, 0.58);
+      color: #f7f7ef;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+      pointer-events: none;
+    }
+
+    #race-hud .title {
       font-size: 12px;
-      text-shadow: 0 0 3px #000;
+      line-height: 1.2;
+      color: #98f0c8;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 8px;
     }
-    
-    #jumpscare {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23000"/><circle cx="35" cy="40" r="8" fill="%23fff"/><circle cx="65" cy="40" r="8" fill="%23fff"/><ellipse cx="50" cy="70" rx="15" ry="20" fill="%23000"/></svg>');
-      background-size: cover;
-      display: none;
-      z-index: 1000;
-      animation: flash 0.1s infinite;
+
+    #race-hud .speed {
+      font-size: 42px;
+      line-height: 0.95;
+      font-weight: 700;
     }
-    
-    @keyframes flash {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+
+    #race-hud .speed span {
+      font-size: 15px;
+      font-weight: 600;
+      color: #d8e7df;
     }
-    
-    #scene-selector {
-      position: absolute;
-      top: 50%;
+
+    #race-hud .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 7px;
+      font-size: 13px;
+      color: #edf4eb;
+    }
+
+    #race-hud .small {
+      margin-top: 9px;
+      font-size: 11px;
+      color: rgba(245, 247, 242, 0.72);
+    }
+
+    #focus-hint {
+      position: fixed;
       left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.9);
-      padding: 30px;
-      border-radius: 10px;
+      bottom: 28px;
+      transform: translateX(-50%);
+      z-index: 2;
+      max-width: min(680px, calc(100vw - 32px));
+      padding: 9px 13px;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: rgba(5, 10, 8, 0.62);
+      color: rgba(250, 253, 246, 0.88);
+      font-size: 12px;
+      line-height: 1.45;
       text-align: center;
-      color: #fff;
-      z-index: 200;
-      display: block;
+      pointer-events: none;
+      transition: opacity 220ms ease;
     }
-    
-    #scene-selector h2 {
-      margin-bottom: 20px;
-      color: #f00;
+
+    #focus-hint.hidden {
+      opacity: 0;
     }
-    
-    #scene-selector button {
-      display: block;
-      width: 200px;
-      margin: 10px auto;
-      padding: 15px;
-      background: #333;
-      color: #fff;
-      border: 2px solid #555;
-      border-radius: 5px;
-      cursor: pointer;
+
+    #webgl-error {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #07100b;
+      color: #f5f7f2;
       font-size: 16px;
-      font-family: inherit;
+      line-height: 1.5;
+      text-align: center;
     }
-    
-    #scene-selector button:hover {
-      background: #555;
-      border-color: #f00;
-    }
-    
-    .bar-label {
-      position: absolute;
-      right: 220px;
-      color: #fff;
-      font-size: 12px;
-      text-shadow: 0 0 3px #000;
-    }
-    
-    #health-label { bottom: 50px; }
-    #sanity-label { bottom: 20px; }
   </style>
-</head>
-<body>
-  <!-- React UI Root Container -->
-  <div id="react-root"></div>
-  
-  <!-- Three.js Canvas -->
-  <canvas id="canvas"></canvas>
-  
-  <!-- Simple HUD (wird von React UI gesteuert) -->
-  <div id="crosshair" style="display: none;"></div>
-  <div id="loc-name" style="display: none;"></div>
-  <div id="health-label" class="bar-label" style="display: none;">❤️ HEALTH</div>
-  <div id="health-bar" style="display: none;"><div id="health-fill"></div></div>
-  <div id="sanity-label" class="bar-label" style="display: none;">🧠 SANITY</div>
-  <div id="sanity-bar" style="display: none;"><div id="sanity-fill"></div></div>
-  <div id="jumpscare"></div>
-  
-  <!-- React UI (built with Vite) -->
-  <script type="module" crossorigin src="ui/dist/assets/index-BI258vA4.js"></script>
-  <link rel="stylesheet" crossorigin href="ui/dist/assets/index-CNJO_tpK.css">
-  
-  <!-- Three.js von CDN -->
   <script type="importmap">
   {
     "imports": {
@@ -177,11 +127,19 @@
     }
   }
   </script>
-  
-  <!-- Game Engine Bridge (verbindet React UI mit Three.js) -->
-  <script src="game-engine-bridge.js"></script>
-  
-  <!-- Game Script -->
+</head>
+<body>
+  <canvas id="canvas" aria-label="GT3 Nurburgring racing simulator"></canvas>
+  <div id="race-hud">
+    <div class="title">Max Verstappen AMG GT3 - Fan Sim</div>
+    <div class="speed"><span id="speed">0</span> <span>km/h</span></div>
+    <div class="row"><span>Lap</span><strong id="lap">1 / 3</strong></div>
+    <div class="row"><span>Sector</span><strong id="sector">GP Start</strong></div>
+    <div class="row"><span>Best</span><strong id="best">--:--.---</strong></div>
+    <div class="small">WASD/Arrows drive. Space brake. R reset. C camera.</div>
+  </div>
+  <div id="focus-hint">Click or press a key to focus the GT3. No official logos or likeness assets are used.</div>
+  <div id="webgl-error">WebGL is not available in this browser. The simulator needs hardware-accelerated 3D rendering.</div>
   <script type="module" src="game.js"></script>
 </body>
 </html>
